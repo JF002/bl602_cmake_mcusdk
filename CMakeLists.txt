@@ -20,6 +20,11 @@ add_executable(bl602_cmake_mcusdk
     sdk/bl_mcu_sdk/bsp/bsp_common/platform/bflb_platform.c
     sdk/bl_mcu_sdk/bsp/bsp_common/platform/syscalls.c
 
+    drivers/Spi.cpp
+    drivers/SpiMaster.cpp
+
+    sx126x/SX126x.cpp
+
     main.cpp)
 
 target_link_libraries(bl602_cmake_mcusdk common bl602_driver freertos)
