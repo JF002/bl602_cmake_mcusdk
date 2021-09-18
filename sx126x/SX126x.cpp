@@ -30,7 +30,7 @@ void SX126x::Init( void ){
 
   xSemaphoreGive(IOLock);
   xSemaphoreGive(IOLock2);
-
+/*
   DeviceType = SX1262;
   OperatingMode = MODE_SLEEP;
   PacketType = PACKET_TYPE_NONE;
@@ -47,6 +47,7 @@ void SX126x::Init( void ){
 	OperatingMode = MODE_STDBY_RC;
 
 	SetPacketType( PACKET_TYPE_LORA );
+ */
 }
 
 SX126x::RadioOperatingModes_t SX126x::GetOperatingMode( void )

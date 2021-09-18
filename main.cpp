@@ -119,14 +119,38 @@ class JFSx1262 : public SX126x {
 };
 */
 uint8_t data[100] = {0x55, 0xBB,0x55, 0xAA,0x55, 0xAA,0x55, 0xAA};
+#define FLASH_CS_PIN     14
+#define DISPLAY_CS_PIN   20
+#define SX126X_SPI_CS_PIN       15
+int deselect_spi(void) {
+  GLB_GPIO_Type pins[3];
+  pins[0] = static_cast<GLB_GPIO_Type>(FLASH_CS_PIN);
+  pins[1] = static_cast<GLB_GPIO_Type>(DISPLAY_CS_PIN);
+  pins[2] = static_cast<GLB_GPIO_Type>(SX126X_SPI_CS_PIN);
+
+  GLB_GPIO_Func_Init(
+          GPIO_FUN_SWGPIO,  //  Configure the pins as GPIO
+          pins,             //  Pins to be configured
+          sizeof(pins) / sizeof(pins[0])  //  4 pins
+          );
+  gpio_set_mode(FLASH_CS_PIN, GPIO_OUTPUT_MODE);
+  gpio_set_mode(DISPLAY_CS_PIN, GPIO_OUTPUT_MODE);
+  gpio_set_mode(SX126X_SPI_CS_PIN, GPIO_OUTPUT_MODE);
+
+  gpio_write(FLASH_CS_PIN, 1);
+  gpio_write(DISPLAY_CS_PIN, 1);
+  gpio_write(SX126X_SPI_CS_PIN, 1);
 
 
+  return 0;
+}
 
 static void HelloWorldTask(void *pvParameters) {
   while(true) {
     for(int i = 0; i< 100; i++) {
       data[i] = i;
     }
+    deselect_spi();
 
     // Init GPIO
     GLB_GPIO_Type pins[2];
@@ -140,7 +164,7 @@ static void HelloWorldTask(void *pvParameters) {
             );
 
     gpio_set_mode(10, GPIO_INPUT_MODE);
-    gpio_set_mode(18, GPIO_OUTPUT_PP_MODE);
+    gpio_set_mode(18, GPIO_OUTPUT_MODE);
 
     //SPI
     Pinetime::Drivers::SpiMaster spi{
@@ -162,10 +186,11 @@ static void HelloWorldTask(void *pvParameters) {
     MSG("Radio GetStatus\r\n");
     auto status = radio.GetStatus();
     printf("Status : %d\r\n", status);
-
+    auto error = radio.GetDeviceErrors();
+    printf("Error : %d\r\n", error);
     MSG("Radio SetDeviceType\r\n");
     radio.SetDeviceType(SX126x::DeviceType_t::SX1262);
-    auto error = radio.GetDeviceErrors();
+    error = radio.GetDeviceErrors();
     printf("Error : %d\r\n", error);
 
     radio.SetStandby(SX126x::STDBY_RC);

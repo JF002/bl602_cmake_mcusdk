@@ -1341,8 +1341,9 @@ public:
 
 	void HalSpiTransfer(uint8_t *buffer_in, const uint8_t *buffer_out, uint16_t size) {
 	  //printf("spi tx : %d\r\n", size);
-
+    gpio_write(15, 0);
 	  spi.ReadWrite(buffer_in, buffer_out, size);
+	  gpio_write(15, 1);
   }
 
 	void HalSpiRead(uint8_t *buffer_in, uint16_t size);

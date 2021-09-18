@@ -20,9 +20,10 @@ bool SpiMaster::Init() {
     mutex = xSemaphoreCreateBinary();
   }
   uint8_t gpio_pins[] = { // TODO: Pin definitions
-          0,11,15,17
+          0,11,17
   };
-  GLB_GPIO_Func_Init(GPIO_FUN_SPI, (GLB_GPIO_Type*)gpio_pins, 4);
+  GLB_GPIO_Func_Init(GPIO_FUN_SPI, (GLB_GPIO_Type*)gpio_pins, 3);
+  GLB_Swap_SPI_0_MOSI_With_MISO(ENABLE);
   GLB_Set_SPI_0_ACT_MOD_Sel(GLB_SPI_PAD_ACT_AS_MASTER);
 
   SPI_IntMask((SPI_ID_Type)0, SPI_INT_ALL,MASK);
@@ -55,7 +56,7 @@ bool SpiMaster::Init() {
   config.continuousEnable = DISABLE;
   config.byteSequence = SPI_BYTE_INVERSE_BYTE0_FIRST;
   config.bitSequence = SPI_BIT_INVERSE_MSB_FIRST;
-  config.clkPhaseInv = SPI_CLK_PHASE_INVERSE_1;
+  config.clkPhaseInv = SPI_CLK_PHASE_INVERSE_0;
   config.clkPolarity = SPI_CLK_POLARITY_LOW;
   config.frameSize = SPI_FRAME_SIZE_8;
 
