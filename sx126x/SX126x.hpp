@@ -78,7 +78,7 @@ public:
 		/*!
 		 * \brief Enables/disables driver debug features
 		 */
-		SX126x_DEBUG = 1,
+		SX126x_DEBUG = 0,
 
 		/*!
 		 * \brief List of matching supported by the sx126x
@@ -1325,7 +1325,8 @@ public:
 	    return 0;
 	  }
 	  auto val = gpio_read(10);
-	  //printf("Read  busy %d\r\n", val);
+    if(val != 0)
+	    printf("Read  busy %d\r\n", val);
 	  return val;
   }
 
@@ -1365,5 +1366,9 @@ public:
 	virtual void HalPostRx() {
 
 	}
+
+  void JFRxDone();
+  void JFRxError(IrqErrorCode_t errCode);
+
 
 };

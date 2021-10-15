@@ -24,9 +24,50 @@
 
 #include "SX126x.hpp"
 
+void SX126x::JFRxError(IrqErrorCode_t errCode) {
+  printf("RXERROR %d\r\n", errCode);
+}
+
+void SX126x::JFRxDone() {
+  printf("!! RX!!\r\n");
+
+  uint8_t readData[300];
+  for(int i = 0; i < 300; i++) {
+    readData[i] = 0;
+  }
+
+  uint8_t size = 0;
+  //this->GetPayload(readData, &size, 200);
+  this->ReadBuffer(0, readData, 255);
+  readData[256] = '\0';
+
+  printf("RX Size : %d\r\n", size);
+  for (int i = 0; i < size; i++) {
+    printf("%d ", readData[i]);
+  }
+  printf("\r\n");
+
+  for (int i = 0; i < size; i++) {
+    printf("%c", readData[i]);
+  }
+  printf("\r\n");
+}
+
+
 void SX126x::Init( void ){
   IOLock = xSemaphoreCreateBinary();
   IOLock2 = xSemaphoreCreateBinary();
+
+   callbacks.rxDone = [this](){
+      JFRxDone();
+    };
+    callbacks.rxError = [this](IrqErrorCode_t errCode) {
+      JFRxError(errCode);
+    };
+
+    callbacks.rxTimeout = [this]() {
+      SetRx(1000000);
+    };
 
   xSemaphoreGive(IOLock);
   xSemaphoreGive(IOLock2);
@@ -39,7 +80,7 @@ void SX126x::Init( void ){
 
   CurrentModParams = {};
   CurrentPacketParams = {};
-
+*/
 	Reset();
 	Wakeup();
 	SetStandby(STDBY_RC);
@@ -47,7 +88,7 @@ void SX126x::Init( void ){
 	OperatingMode = MODE_STDBY_RC;
 
 	SetPacketType( PACKET_TYPE_LORA );
- */
+
 }
 
 SX126x::RadioOperatingModes_t SX126x::GetOperatingMode( void )
@@ -179,18 +220,13 @@ void SX126x::SetSleep( SleepParams_t sleepConfig )
 
 void SX126x::SetStandby( RadioStandbyModes_t standbyConfig )
 {
-  printf("SX126x: SetStandby1\r\n");
-
   xSemaphoreTake(IOLock2, portMAX_DELAY);
-  printf("SX126x: SetStandby2\r\n");
 
 
 #ifdef ADV_DEBUG
 	printf("SetStandby ");
 #endif
 	WriteCommand( RADIO_SET_STANDBY, ( uint8_t* )&standbyConfig, 1 );
-
-	printf("SX126x: SetStandby3\r\n");
 
 	if( standbyConfig == STDBY_RC )
 	{
@@ -826,6 +862,9 @@ void SX126x::ProcessIrqs() {
 #ifdef ADV_DEBUG
 	printf("0x%04x\n\r", irqRegs );
 #endif
+  if(irqRegs != 0)
+    printf("--> 0x%04x\r\n", irqRegs );
+
 
 	auto& txDone = callbacks.txDone;
 	auto& rxDone = callbacks.rxDone;
@@ -839,6 +878,7 @@ void SX126x::ProcessIrqs() {
 
 	if( ( irqRegs & IRQ_HEADER_VALID ) == IRQ_HEADER_VALID )
 	{
+    printf("rxHeaderDone\r\n");
 		// LoRa Only
 //		FrequencyError = 0x000000 | ( ( 0x0F & ReadReg( REG_FREQUENCY_ERRORBASEADDR ) ) << 16 );
 //		FrequencyError = FrequencyError | ( ReadReg( REG_FREQUENCY_ERRORBASEADDR + 1 ) << 8 );
@@ -850,6 +890,7 @@ void SX126x::ProcessIrqs() {
 
 	if( ( irqRegs & IRQ_TX_DONE ) == IRQ_TX_DONE )
 	{
+    printf("txdone\r\n");
 		HalPostTx();
 		if (txDone)
 			txDone();
@@ -858,11 +899,13 @@ void SX126x::ProcessIrqs() {
 
 	if( ( irqRegs & IRQ_RX_DONE ) == IRQ_RX_DONE )
 	{
-
+    printf("rxdone\r\n");
 		if( ( irqRegs & IRQ_CRC_ERROR ) == IRQ_CRC_ERROR )
 		{
 			if (rxError)
 				rxError(IRQ_CRC_ERROR_CODE);
+      rxDone();
+
 		}
 		else
 		{
@@ -874,27 +917,27 @@ void SX126x::ProcessIrqs() {
 
 	if (( irqRegs & IRQ_SYNCWORD_VALID ) == IRQ_SYNCWORD_VALID )
 	{
-
+    printf("syncwordvalid\r\n");
 		if (rxSyncWordDone)
 			rxSyncWordDone();
 	}
 
 
 	if( ( irqRegs & IRQ_CAD_DONE ) == IRQ_CAD_DONE ) {
-
+    printf("caddone\r\n");
 		if (cadDone) {
 			cadDone( ( irqRegs & IRQ_CAD_ACTIVITY_DETECTED ) == IRQ_CAD_ACTIVITY_DETECTED );
 		}
 	}
 
 	if( ( irqRegs & IRQ_RX_TX_TIMEOUT ) == IRQ_RX_TX_TIMEOUT ) {
-
+    printf("timeout\r\n");
 		if (OperatingMode == MODE_TX) {
 			HalPostTx();
 
 			if (txTimeout)
 				txTimeout();
-		} else if (OperatingMode == MODE_TX) {
+		} else if (OperatingMode == MODE_RX) {
 			HalPostRx();
 
 			if (rxTimeout)
@@ -902,44 +945,55 @@ void SX126x::ProcessIrqs() {
 		}
 	}
 
-/*
+
     //IRQ_PREAMBLE_DETECTED                   = 0x0004,
     if( irqRegs & IRQ_PREAMBLE_DETECTED )
     {
+      printf("IRQ_PREAMBLE_DETECTED\r\n");
+      /*
         if( rxPblSyncWordHeader != NULL )
         {
             rxPblSyncWordHeader( IRQ_PBL_DETECT_CODE);
 
-        }
+
+        }*/
     }
 
     //IRQ_SYNCWORD_VALID                      = 0x0008,
     if( irqRegs & IRQ_SYNCWORD_VALID )
     {
+      printf("IRQ_SYNCWORD_VALID\r\n");
+      /*
         if( rxPblSyncWordHeader != NULL )
         {
             rxPblSyncWordHeader( IRQ_SYNCWORD_VALID_CODE  );
-        }
+        }*/
     }
 
     //IRQ_HEADER_VALID                        = 0x0010,
     if ( irqRegs & IRQ_HEADER_VALID )
     {
+      printf("IRQ_HEADER_VALID\r\n");
+      /*
+
         if( rxPblSyncWordHeader != NULL )
         {
             rxPblSyncWordHeader( IRQ_HEADER_VALID_CODE );
-        }
+        }*/
     }
 
     //IRQ_HEADER_ERROR                        = 0x0020,
     if( irqRegs & IRQ_HEADER_ERROR )
     {
+      printf("IRQ_HEADER_ERROR\r\n");
+      /*
         if( rxError != NULL )
         {
             rxError( IRQ_HEADER_ERROR_CODE );
         }
+        */
     }
-*/
+
 }
 
 void SX126x::HalSpiRead(uint8_t *buffer_in, uint16_t size) {
@@ -979,28 +1033,21 @@ void SX126x::Reset() {
 void SX126x::Wakeup() {
   xSemaphoreTake(IOLock, portMAX_DELAY);
 
+  if (SX126x_DEBUG) {
+    printf("SX126x: Wakeup\n");
+  }
 
-	if (SX126x_DEBUG) {
-		printf("SX126x: Wakeup\r\n");
-	}
+  uint8_t buf[2] = {RADIO_GET_STATUS, 0};
 
-	uint8_t buf[2] = {RADIO_GET_STATUS, 0};
+  HalSpiWrite(buf, 2);
 
-	//HalSpiWrite(buf, 2);
-        uint8_t ret[2];
-        HalSpiTransfer(buf, ret, 2);
-        if(ret[1] != 0x2A) {
-        } else {
-        }
+  // Wait for chip to be ready.
+  WaitOnBusyLong();
 
-	// Wait for chip to be ready.
-	WaitOnBusyLong();
-
-	if (SX126x_DEBUG) {
-		printf("SX126x: Wakeup done\r\n");
-	}
-	xSemaphoreGive(IOLock);
-
+  if (SX126x_DEBUG) {
+    printf("SX126x: Wakeup done\n");
+  }
+  xSemaphoreGive(IOLock);
 }
 
 void SX126x::WriteCommand(SX126x::RadioCommands_t opcode, uint8_t *buffer, uint16_t size) {
@@ -1152,7 +1199,7 @@ void SX126x::SetDeviceType(SX126x::DeviceType_t devtype) {
 
 void SX126x::WaitOnBusyLong() {
 	while (HalGpioRead(GPIO_PIN_BUSY)) {
-    vTaskDelay(1);
+    vTaskDelay(10);
 	}
 }
 

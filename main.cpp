@@ -118,7 +118,6 @@ class JFSx1262 : public SX126x {
   Pinetime::Drivers::Spi& spi;
 };
 */
-uint8_t data[100] = {0x55, 0xBB,0x55, 0xAA,0x55, 0xAA,0x55, 0xAA};
 #define FLASH_CS_PIN     14
 #define DISPLAY_CS_PIN   20
 #define SX126X_SPI_CS_PIN       15
@@ -146,10 +145,92 @@ int deselect_spi(void) {
 }
 
 static void HelloWorldTask(void *pvParameters) {
+  deselect_spi();
+
+  // Init GPIO
+  GLB_GPIO_Type pins[2];
+  pins[0] = static_cast<GLB_GPIO_Type>(18);
+  pins[1] = static_cast<GLB_GPIO_Type>(10);
+
+  GLB_GPIO_Func_Init(
+          GPIO_FUN_SWGPIO,  //  Configure the pins as GPIO
+          pins,             //  Pins to be configured
+          sizeof(pins) / sizeof(pins[0])  //  4 pins
+  );
+
+  gpio_set_mode(10, GPIO_INPUT_MODE);
+  gpio_set_mode(18, GPIO_OUTPUT_MODE);
+
+  //SPI
+  Pinetime::Drivers::SpiMaster spi{
+          Pinetime::Drivers::SpiMaster::SpiModule::SPI0,
+          {Pinetime::Drivers::SpiMaster::BitOrder::Msb_Lsb,
+           Pinetime::Drivers::SpiMaster::Modes::Mode3,
+           Pinetime::Drivers::SpiMaster::Frequencies::Freq8Mhz, 0, 0, 0}};
+
+  MSG("SPI\r\n");
+  Pinetime::Drivers::Spi loraSpi{spi, 0};
+  spi.Init();
+  loraSpi.Init();
+
+
+  SX126x radio(loraSpi);
+  radio.Init();
+  radio.SetPacketType(SX126x::PACKET_TYPE_LORA);
+  radio.SetDeviceType(SX126x::DeviceType_t::SX1262);
+
+
+  radio.SetRfFrequency(868000000);
+  radio.SetBufferBaseAddresses(100, 0);
+  //radio.SetLoRaSymbNumTimeout(1);
+  //radio.SetRegulatorMode(SX126x::USE_LDO);
+
+  SX126x::ModulationParams_t modulationParams;
+  modulationParams.PacketType = SX126x::RadioPacketTypes_t::PACKET_TYPE_LORA;
+  modulationParams.Params.LoRa.SpreadingFactor = SX126x::RadioLoRaSpreadingFactors_t::LORA_SF7;
+  modulationParams.Params.LoRa.CodingRate = SX126x::RadioLoRaCodingRates_t::LORA_CR_4_5;
+  modulationParams.Params.LoRa.Bandwidth = SX126x::RadioLoRaBandwidths_t::LORA_BW_125;
+  modulationParams.Params.LoRa.LowDatarateOptimize = false;
+  radio.SetModulationParams(modulationParams);
+
+  SX126x::PacketParams_t packetParams;
+  packetParams.PacketType = SX126x::RadioPacketTypes_t::PACKET_TYPE_LORA;
+  packetParams.Params.LoRa.PreambleLength = 65535;
+  packetParams.Params.LoRa.HeaderType = SX126x::RadioLoRaPacketLengthsMode_t::LORA_PACKET_VARIABLE_LENGTH;
+  packetParams.Params.LoRa.PayloadLength = 16;
+  packetParams.Params.LoRa.CrcMode = SX126x::RadioLoRaCrcModes_t::LORA_CRC_OFF;
+  packetParams.Params.LoRa.InvertIQ = SX126x::RadioLoRaIQModes_t::LORA_IQ_NORMAL;
+  radio.SetPacketParams(packetParams);
+
+  radio.SetDioIrqParams(0xffff, 0x0001, 0, 0);
+  radio.SetStopRxTimerOnPreambleDetect(false);
+  // TODO set irq timeout?
+
+  //radio.SetDio2AsRfSwitchCtrl(false);
+  //radio.SetDio3AsTcxoCtrl(SX126x::TCXO_CTRL_1_6V, 0xffffffff);
+  radio.SetRx(0xffffffff);
+
+  while (1) {
+    radio.ProcessIrqs();
+    vTaskDelay(1000);
+    auto s = radio.GetStatus();
+
+    auto e = radio.GetDeviceErrors();
+
+    MSG("S : cmd:%d / busy:%d / chip:%d, E : %d\r\n", s.Fields.CmdStatus, s.Fields.CpuBusy, s.Fields.ChipMode, e.Value);
+  }
+}
+
+#if 0
+static void HelloWorldTask(void *pvParameters) {
+  uint8_t data[100] = {0};
+
   while(true) {
-    for(int i = 0; i< 100; i++) {
-      data[i] = i;
-    }
+    data[0] = 'P';
+    data[1] = 'i';
+    data[2] = 'n';
+    data[3] = 'g';
+    data[4] = '\0';
     deselect_spi();
 
     // Init GPIO
@@ -196,6 +277,8 @@ static void HelloWorldTask(void *pvParameters) {
     radio.SetStandby(SX126x::STDBY_RC);
     //radio.SetDio3AsTcxoCtrl(SX126x::RadioTcxoCtrlVoltage_t::TCXO_CTRL_3_3V, 5 << 6);
 
+
+
     SX126x::CalibrationParams_t calibrationParams;
     calibrationParams.Fields.ADCBulkNEnable = 1;
     calibrationParams.Fields.ADCBulkPEnable = 1;
@@ -204,10 +287,11 @@ static void HelloWorldTask(void *pvParameters) {
     calibrationParams.Fields.PLLEnable = 1;
     calibrationParams.Fields.RC13MEnable  = 1;
     calibrationParams.Fields.RC64KEnable = 1;
-    radio.Calibrate(calibrationParams);
+    //radio.Calibrate(calibrationParams);
+
+
 
     //radio.SetDio2AsRfSwitchCtrl(true);
-
 
     radio.SetStandby(SX126x::STDBY_XOSC);
     radio.SetRegulatorMode(SX126x::RadioRegulatorMode_t::USE_DCDC);
@@ -220,54 +304,34 @@ static void HelloWorldTask(void *pvParameters) {
     radio.SetPacketType(SX126x::RadioPacketTypes_t::PACKET_TYPE_LORA);
     radio.SetDioIrqParams(0xffff, 0x0001, 0, 0);
 
-
     MSG("Radio SetModulationParams\r\n");
 
     SX126x::ModulationParams_t modulationParams;
     modulationParams.PacketType = SX126x::RadioPacketTypes_t::PACKET_TYPE_LORA;
-    modulationParams.Params.LoRa.SpreadingFactor = SX126x::RadioLoRaSpreadingFactors_t::LORA_SF12;
+    modulationParams.Params.LoRa.SpreadingFactor = SX126x::RadioLoRaSpreadingFactors_t::LORA_SF7;
     modulationParams.Params.LoRa.CodingRate =  SX126x::RadioLoRaCodingRates_t::LORA_CR_4_5;
-    modulationParams.Params.LoRa.Bandwidth = SX126x::RadioLoRaBandwidths_t::LORA_BW_500;
+    modulationParams.Params.LoRa.Bandwidth = SX126x::RadioLoRaBandwidths_t::LORA_BW_125;
     modulationParams.Params.LoRa.LowDatarateOptimize = false;
     radio.SetModulationParams(modulationParams);
 
+
+
     SX126x::PacketParams_t packetParams;
     packetParams.PacketType = SX126x::RadioPacketTypes_t::PACKET_TYPE_LORA;
-    packetParams.Params.LoRa.PreambleLength = 100;
+    packetParams.Params.LoRa.PreambleLength = 8;
     packetParams.Params.LoRa.HeaderType = SX126x::RadioLoRaPacketLengthsMode_t::LORA_PACKET_VARIABLE_LENGTH;
-    packetParams.Params.LoRa.PayloadLength = 100;
+    packetParams.Params.LoRa.PayloadLength = 4;
     packetParams.Params.LoRa.CrcMode = SX126x::RadioLoRaCrcModes_t::LORA_CRC_OFF;
     packetParams.Params.LoRa.InvertIQ = SX126x::RadioLoRaIQModes_t::LORA_IQ_NORMAL;
     radio.SetPacketParams(packetParams);
 
-    auto mode = radio.GetOperatingMode();
-    printf("Mode : %d\r\n", mode);
-    //radio.SetRx(0xffff);
-    mode = radio.GetOperatingMode();
-    printf("Hello world! %d\r\n", mode);
-
-
-    radio.SetPacketParams(packetParams);
-    MSG("Radio WriteBuffer\r\n");
-
-    radio.WriteBuffer(0, data, 100);
+    //radio.WriteBuffer(0, data, 5);
+    //radio.SetTx(0xffffffff);
 
 
 
-
-    uint8_t readData[8];
-    //radio.ReadBuffer(0, readData, 8);
-    //for(int i = 0; i < 8; i++) {
-    //  printf("0x%x ", readData[i]);
-    //}
-    //printf("\n");
-
-
-    int c = 0;
-
-    radio.SetTx(0xffffffff);
-    vTaskDelay(10000);
-
+    radio.SetRx(0xffffffff);
+    vTaskDelay(100);
 
     error = radio.GetDeviceErrors();
     printf("Error : %d\r\n", error);
@@ -276,9 +340,9 @@ static void HelloWorldTask(void *pvParameters) {
 
 
       radio.ProcessIrqs();
-      auto mode = radio.GetOperatingMode();
-      printf("Hello world! %d\r\n", mode);
-      vTaskDelay(1000);
+      //auto mode = radio.GetOperatingMode();
+      //printf("Hello world! %d\r\n", mode);
+      vTaskDelay(100);
 
 
     }
@@ -286,6 +350,7 @@ static void HelloWorldTask(void *pvParameters) {
 
   }
 }
+#endif
 
 int main(void) {
   bflb_platform_init(0);
